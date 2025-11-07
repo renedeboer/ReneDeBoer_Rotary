@@ -5,32 +5,42 @@ namespace renedeboer {
 Rotary* Rotary::_instance = nullptr;
 
 Rotary::Rotary(uint8_t clkPin, uint8_t dtPin, uint8_t swPin, unsigned long longPressTime)
-    : _clkPin(clkPin), _dtPin(dtPin), _swPin(swPin), _longPressTime(longPressTime)
-{
-    _swIsAnalog = (swPin == A0);
-}
+    : _clkPin(clkPin), _dtPin(dtPin), _swPin(swPin), _longPressTime(longPressTime) {}
 
 void Rotary::begin() {
     _instance = this;
 
     pinMode(_clkPin, INPUT_PULLUP);
     pinMode(_dtPin, INPUT_PULLUP);
-    if (!_swIsAnalog) pinMode(_swPin, INPUT_PULLUP);
+    if (!(_swPin == A0)) pinMode(_swPin, INPUT_PULLUP);
 
     attachInterrupt(digitalPinToInterrupt(_clkPin), isrHandlerStatic, RISING);
 }
 
+bool Rotary::pressed() {
+     
+    return _pressed;
+}
+
 void Rotary::update() {
-    int swVal = _swIsAnalog ? analogRead(_swPin) : digitalRead(_swPin);
+    
+    // Only read analog pin every 20ms to avoid blocking
+    static unsigned long lastAnalogRead = 0;
+    unsigned long now = millis();
+    if (_swPin == A0 && now - lastAnalogRead >= 20) { 
+        lastAnalogRead = now;
+        int swVal = analogRead(_swPin);
+        _pressed = swVal < 100;  // cache pressed state
+    } else if (_swPin != A0) {
+        _pressed = digitalRead(_swPin) == LOW;  // fast, non-blocking digital read
+    }
 
-    bool pressed = _swIsAnalog ? (swVal < 100) : (swVal == LOW);
-
-    if (_buttonState == IDLE && pressed) {
+    if (_buttonState == IDLE && _pressed) {
         _buttonState = PRESSED;
         _pressStart = millis();
     }
     else if (_buttonState == PRESSED) {
-        if (!pressed) {
+        if (!_pressed) {
             // short press
             if (millis() - _pressStart < _longPressTime) {
                 if (_onShortPress) _onShortPress();
@@ -42,7 +52,7 @@ void Rotary::update() {
             _buttonState = LONG;
         }
     }
-    else if (_buttonState == LONG && !pressed) {
+    else if (_buttonState == LONG && !_pressed) {
         _buttonState = IDLE; // release after long press
     }
 }
@@ -69,21 +79,16 @@ void IRAM_ATTR Rotary::handleISR() {
     if (now - lastMicros < 500) return; // 500us debounce
     lastMicros = now;
 
-    // read CLK rising edge
-    if (!digitalRead(_clkPin)) return;
+    bool clk = digitalRead(_clkPin);
+    bool dt  = digitalRead(_dtPin);
 
-    delayMicroseconds(40); // small RC delay
-    bool dt1 = digitalRead(_dtPin);
-    delayMicroseconds(30);
-    bool dt2 = digitalRead(_dtPin);
-
-    if (dt1 == dt2) {
-        if (dt1 != digitalRead(_clkPin))
-            _encoderPos--; // CW
-        else
-            _encoderPos++; // CCW
-        _turned = true;
+    if (clk != dt) {
+        _encoderPos--;
+    } else {
+        _encoderPos++;
     }
+    _turned = true;
 }
+
 
 } // namespace renedeboer

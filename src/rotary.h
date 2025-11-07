@@ -13,7 +13,7 @@ public:
     void begin();
     void update();               // call in loop to handle button
     int getPosition() const;
-
+	bool pressed();
     void setOnShortPress(Callback cb);
     void setOnLongPress(Callback cb);
 
@@ -35,7 +35,7 @@ private:
     Callback _onLongPress = nullptr;
 
     bool _swIsAnalog = false;
-
+    bool  _pressed = false;
     // ISR helpers
     static Rotary* _instance;
     static void IRAM_ATTR isrHandlerStatic();
